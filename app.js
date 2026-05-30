@@ -539,34 +539,10 @@ function updateStats() {
 // ---------------------------------------------------------------------------
 function setupGeolocation() {
   dom.geolocateBtn.addEventListener('click', () => {
-    if (!navigator.geolocation) {
-      alert('您的瀏覽器不支援定位功能');
-      return;
+    const nearMeBtn = document.getElementById('near-me-btn');
+    if (nearMeBtn) {
+      nearMeBtn.click();
     }
-
-    dom.geolocateBtn.classList.add('locating');
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        dom.geolocateBtn.classList.remove('locating');
-        const { latitude, longitude } = pos.coords;
-        state.map.flyTo([latitude, longitude], 14, { duration: 1.2 });
-        addUserLocationMarker(latitude, longitude);
-      },
-      (err) => {
-        dom.geolocateBtn.classList.remove('locating');
-        if (err.code === err.PERMISSION_DENIED) {
-          alert('定位權限已被拒絕，請在瀏覽器設定中啟用');
-        } else {
-          alert('無法取得位置資訊，請再試一次');
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000,
-      }
-    );
   });
 }
 

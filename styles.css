@@ -568,6 +568,17 @@ body {
   width: 22px;
   height: 22px;
 }
+.fab-btn.with-text {
+  width: auto;
+  padding: 0 20px;
+  border-radius: 26px;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--accent-op16);
+  border-color: rgba(0, 212, 255, 0.4);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.15);
+}
 .fab-btn:hover {
   color: var(--accent-op16);
   border-color: rgba(0, 212, 255, 0.3);
