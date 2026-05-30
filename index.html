@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>7-11 ONE PIECE 集點地圖 | OP Store Locator</title>
+  <meta name="description" content="尋找販售 ONE PIECE 集換式卡牌 OP-15 & OP-16 的 7-ELEVEN 門市地圖">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Leaflet v1.9.4 & Leaflet MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+
+</head>
+<body>
+  <div id="app">
+    <!-- Map Container -->
+    <div id="map"></div>
+
+
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="overlay-screen">
+      <div class="loading-content">
+        <div class="loading-skull">☠️</div>
+        <div class="loading-bar-track">
+          <div class="loading-bar-fill"></div>
+        </div>
+        <p class="loading-text">Loading store data...</p>
+      </div>
+    </div>
+
+    <!-- Error Overlay -->
+    <div id="error-overlay" class="overlay-screen" style="display:none;">
+      <div class="overlay-card">
+        <div class="overlay-icon">⚠️</div>
+        <h2 class="overlay-title">Data Load Error</h2>
+        <p class="overlay-text" id="error-message">Could not load store data. Please check your connection and try again.</p>
+        <button class="overlay-btn" onclick="location.reload()">Retry</button>
+      </div>
+    </div>
+
+    <!-- Controls Overlay -->
+    <div id="controls-overlay">
+      <!-- Logo / Branding -->
+      <div id="brand-bar">
+        <div class="brand-logo">
+          <span class="brand-flag">☠️</span>
+          <span class="brand-name">OP Map</span>
+        </div>
+      </div>
+
+      <!-- Search Container -->
+      <div id="search-container">
+        <div class="search-input-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="搜尋門市名稱或地址..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="search-clear" class="search-clear-btn" style="display:none;" aria-label="Clear search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="search-results" class="search-results" style="display:none;"></div>
+      </div>
+
+      <!-- Filter Pills -->
+      <div id="filter-pills">
+        <button class="filter-pill active" data-filter="all">
+          <span class="pill-dot dot-all"></span>
+          All
+        </button>
+        <button class="filter-pill" data-filter="op15">
+          <span class="pill-dot dot-op15"></span>
+          OP-15
+        </button>
+        <button class="filter-pill" data-filter="op16">
+          <span class="pill-dot dot-op16"></span>
+          OP-16
+        </button>
+        <button class="filter-pill" id="near-me-btn" data-filter="near">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:2px">
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          附近
+        </button>
+        <div class="filter-divider"></div>
+        <div class="city-filter-wrap">
+          <select id="city-filter" class="city-filter">
+            <option value="all">所有縣市</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Geolocate Button -->
+    <button id="geolocate-btn" class="fab-btn" aria-label="Find my location" title="我的位置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+      </svg>
+    </button>
+
+    <!-- Store Detail Panel -->
+    <div id="store-panel" class="store-panel" style="display:none;">
+      <div class="panel-drag-handle"><span></span></div>
+      <button id="panel-close" class="panel-close-btn" aria-label="Close panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <div class="panel-content">
+        <div class="panel-header">
+          <h2 id="panel-name" class="panel-name"></h2>
+          <div id="panel-tags" class="panel-tags"></div>
+        </div>
+        <div class="panel-details">
+          <div class="detail-row">
+            <svg class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+            <span id="panel-address" class="detail-text"></span>
+          </div>
+          <div class="detail-row">
+            <svg class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+            <a id="panel-phone" class="detail-link" href="#"></a>
+          </div>
+        </div>
+        <a id="panel-navigate" class="navigate-btn" href="#" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+          開啟 Google Maps 導航
+        </a>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div id="stats-bar">
+      <div class="stats-content">
+        <span class="stats-label">顯示</span>
+        <span id="stats-count" class="stats-count">0</span>
+        <span class="stats-label"> / </span>
+        <span id="stats-total" class="stats-total">0</span>
+        <span class="stats-label"> 間門市</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
