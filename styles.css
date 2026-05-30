@@ -235,10 +235,13 @@ body {
 .loading-content {
   text-align: center;
 }
-.loading-skull {
-  font-size: 64px;
+.loading-luffy {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
   animation: skullFloat 2.5s ease-in-out infinite;
   margin-bottom: 28px;
+  filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.4));
 }
 .loading-bar-track {
   width: 200px;
