@@ -547,7 +547,7 @@ body {
   position: absolute;
   bottom: calc(64px + var(--safe-bottom));
   right: 16px;
-  z-index: 100;
+  z-index: 9999;
   width: 52px;
   height: 52px;
   display: flex;
