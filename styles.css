@@ -270,7 +270,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 10000;
   padding: calc(12px + var(--safe-top)) 16px 0;
   pointer-events: none;
   animation: fadeIn 0.6s 0.3s both;
@@ -390,7 +390,7 @@ body {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   animation: fadeIn 0.2s ease;
-  z-index: 110;
+  z-index: 10010;
 }
 
 .search-result-item {
@@ -599,7 +599,7 @@ body {
 /* ---------- Store Detail Panel ---------- */
 .store-panel {
   position: absolute;
-  z-index: 200;
+  z-index: 10020;
   background: var(--bg-glass-heavy);
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
@@ -793,7 +793,7 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 9990;
   padding: 0 16px calc(12px + var(--safe-bottom));
   background: linear-gradient(to top, var(--bg-primary) 40%, transparent);
   pointer-events: none;
