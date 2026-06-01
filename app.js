@@ -436,38 +436,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
 function setupFilters() {
   dom.filterPills.forEach(pill => {
     pill.addEventListener('click', () => {
-      if (pill.dataset.filter === 'near') {
-        if (!navigator.geolocation) {
-          alert('您的瀏覽器不支援定位功能');
-          return;
-        }
-        
-        pill.classList.add('locating');
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            pill.classList.remove('locating');
-            state.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            addUserLocationMarker(pos.coords.latitude, pos.coords.longitude);
-            state.map.flyTo([pos.coords.latitude, pos.coords.longitude], 14, { duration: 1.2 });
-            
-            dom.filterPills.forEach(p => p.classList.remove('active'));
-            pill.classList.add('active');
-            state.activeFilter = pill.dataset.filter;
-            applyFilters();
-          },
-          (err) => {
-            pill.classList.remove('locating');
-            if (err.code === err.PERMISSION_DENIED) {
-              alert('定位權限已被拒絕，請在瀏覽器設定中啟用');
-            } else {
-              alert('無法取得位置資訊，請再試一次');
-            }
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-        );
-        return;
-      }
-
       dom.filterPills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
       state.activeFilter = pill.dataset.filter;
@@ -539,10 +507,40 @@ function updateStats() {
 // ---------------------------------------------------------------------------
 function setupGeolocation() {
   dom.geolocateBtn.addEventListener('click', () => {
-    const nearMeBtn = document.getElementById('near-me-btn');
-    if (nearMeBtn) {
-      nearMeBtn.click();
+    if (!navigator.geolocation) {
+      alert('您的瀏覽器不支援定位功能');
+      return;
     }
+
+    dom.geolocateBtn.classList.add('locating');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        dom.geolocateBtn.classList.remove('locating');
+        const { latitude, longitude } = pos.coords;
+        state.userLocation = { lat: latitude, lng: longitude };
+        addUserLocationMarker(latitude, longitude);
+        state.map.flyTo([latitude, longitude], 14, { duration: 1.2 });
+        
+        // Remove active class from other pills (if any)
+        dom.filterPills.forEach(p => p.classList.remove('active'));
+        state.activeFilter = 'near';
+        applyFilters();
+      },
+      (err) => {
+        dom.geolocateBtn.classList.remove('locating');
+        if (err.code === err.PERMISSION_DENIED) {
+          alert('定位權限已被拒絕，請在瀏覽器設定中啟用');
+        } else {
+          alert('無法取得位置資訊，請再試一次');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      }
+    );
   });
 }
 
