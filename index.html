@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>7-11 ONE PIECE 集點地圖 | OP Store Locator</title>
-  <meta name="description" content="尋找販售 ONE PIECE 集換式卡牌 OP-14、OP-15 與 OP-16 的 7-ELEVEN 門市地圖">
+  <meta name="description" content="尋找販售 ONE PIECE 集換式卡牌 OP-14、OP-15、OP-16 與推估卡牌強店的 7-ELEVEN 門市地圖">
   <meta name="theme-color" content="#0a0e17">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 
 
 </head>
@@ -111,6 +111,19 @@
           </select>
         </div>
       </div>
+      <div id="estimated-filter-row">
+        <button
+          class="filter-pill estimated-filter-pill"
+          data-filter="estimated"
+          aria-label="推估卡牌強店 TOP 2000，非官方或實際 POS 業績"
+          title="依公開配貨訊號推估，非官方或實際 POS 業績"
+        >
+          <span class="pill-star">★</span>
+          <span>推估強店</span>
+          <span class="pill-mini-label">TOP 2000</span>
+        </button>
+        <span class="estimated-filter-disclaimer">公開配貨推估 · 非官方業績</span>
+      </div>
     </div>
 
     <!-- Geolocate Button -->
@@ -134,6 +147,14 @@
         <div class="panel-header">
           <h2 id="panel-name" class="panel-name"></h2>
           <div id="panel-tags" class="panel-tags"></div>
+        </div>
+        <div id="panel-estimated" class="estimated-ranking-card" style="display:none;">
+          <div class="estimated-ranking-head">
+            <span class="estimated-ranking-label">★ 推估強店</span>
+            <strong id="panel-estimated-rank" class="estimated-ranking-rank"></strong>
+            <span id="panel-estimated-meta" class="estimated-ranking-meta"></span>
+          </div>
+          <p id="panel-estimated-note" class="estimated-ranking-note"></p>
         </div>
         <div class="panel-details">
           <div class="detail-row">
@@ -171,6 +192,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

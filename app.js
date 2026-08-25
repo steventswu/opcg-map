@@ -16,6 +16,7 @@ const PRODUCT_META = {
   'OP-15': { filter: 'op15', tagClass: 'tag-op15' },
   'OP-16': { filter: 'op16', tagClass: 'tag-op16' },
 };
+const ESTIMATED_FILTER = 'estimated';
 
 // ---------------------------------------------------------------------------
 // State
@@ -23,16 +24,18 @@ const PRODUCT_META = {
 const state = {
   stores: [],
   filteredStores: [],
-  activeFilter: 'all',    // 'all' | 'op14' | 'op15' | 'op16' | 'near'
+  activeFilter: 'all',    // 'all' | 'op14' | 'op15' | 'op16' | 'estimated' | 'near'
   activeCity: 'all',
   selectedStore: null,
   searchQuery: '',
   map: null,
   markerCluster: null,
-  popup: null,
   cities: [],
   debounceTimer: null,
   userMarker: null,
+  originalStoreCount: 0,
+  estimatedStoreCount: 0,
+  estimatedMeta: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -56,6 +59,10 @@ const dom = {
   panelClose: $('#panel-close'),
   panelName: $('#panel-name'),
   panelTags: $('#panel-tags'),
+  panelEstimated: $('#panel-estimated'),
+  panelEstimatedRank: $('#panel-estimated-rank'),
+  panelEstimatedMeta: $('#panel-estimated-meta'),
+  panelEstimatedNote: $('#panel-estimated-note'),
   panelAddress: $('#panel-address'),
   panelPhone: $('#panel-phone'),
   panelNavigate: $('#panel-navigate'),
@@ -102,9 +109,19 @@ function renderProductTags(products) {
   }).join('');
 }
 
+function renderEstimatedTag(store) {
+  if (!store.estimatedRank) return '';
+  return `<span class="tag tag-estimated" title="公開配貨訊號推估，非官方業績">★ 推估 #${store.estimatedRank.toLocaleString()}</span>`;
+}
+
+function renderStoreTags(store) {
+  return renderProductTags(store.products) + renderEstimatedTag(store);
+}
+
 function getProductVariant(products, prefix) {
   const knownProducts = [...new Set(products.filter(product => PRODUCT_META[product]))];
-  if (knownProducts.length !== 1) return `${prefix}-both`;
+  if (knownProducts.length === 0) return `${prefix}-unlisted`;
+  if (knownProducts.length > 1) return `${prefix}-both`;
   return `${prefix}-${PRODUCT_META[knownProducts[0]].filter}`;
 }
 
@@ -113,13 +130,48 @@ function getProductVariant(products, prefix) {
 // ---------------------------------------------------------------------------
 async function loadStores() {
   try {
-    const res = await fetch('/data/stores.json');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const [storeResponse, estimatedResponse] = await Promise.all([
+      fetch('/data/stores.json'),
+      fetch('/data/estimated_top2000.json'),
+    ]);
+    if (!storeResponse.ok) throw new Error(`HTTP ${storeResponse.status}`);
+    const data = await storeResponse.json();
+    let estimatedData = { meta: null, stores: [] };
+    if (estimatedResponse.ok) {
+      estimatedData = await estimatedResponse.json();
+    } else {
+      console.warn(`Estimated store data unavailable: HTTP ${estimatedResponse.status}`);
+    }
 
     const raw = Array.isArray(data) ? data : (data.stores || []);
+    const estimatedRaw = Array.isArray(estimatedData) ? estimatedData : (estimatedData.stores || []);
+    const estimatedById = new Map(estimatedRaw.map(store => [String(store.id), store]));
+    const mergedById = new Map();
 
-    state.stores = raw
+    raw.forEach(store => {
+      const estimated = estimatedById.get(String(store.id));
+      mergedById.set(String(store.id), {
+        ...store,
+        isOriginal: true,
+        estimatedRank: estimated?.rank || null,
+        estimatedScore: estimated?.score ?? null,
+        estimatedConfidence: estimated?.confidence || '',
+      });
+    });
+
+    estimatedRaw.forEach(store => {
+      if (mergedById.has(String(store.id))) return;
+      mergedById.set(String(store.id), {
+        ...store,
+        products: [],
+        isOriginal: false,
+        estimatedRank: store.rank,
+        estimatedScore: store.score,
+        estimatedConfidence: store.confidence,
+      });
+    });
+
+    state.stores = [...mergedById.values()]
       .filter(s => s.name && s.lat != null && s.lng != null)
       .map((s, i) => ({
         id: s.id || i,
@@ -130,12 +182,20 @@ async function loadStores() {
         lat: Number(s.lat),
         lng: Number(s.lng),
         products: normalizeProducts(s.products || s.product || []),
+        isOriginal: s.isOriginal !== false,
+        estimatedRank: s.estimatedRank ? Number(s.estimatedRank) : null,
+        estimatedScore: s.estimatedScore == null ? null : Number(s.estimatedScore),
+        estimatedConfidence: s.estimatedConfidence || '',
       }));
+
+    state.originalStoreCount = state.stores.filter(store => store.isOriginal).length;
+    state.estimatedStoreCount = state.stores.filter(store => store.estimatedRank).length;
+    state.estimatedMeta = estimatedData.meta || null;
 
     state.cities = [...new Set(state.stores.map(s => s.city).filter(Boolean))].sort();
     populateCityFilter();
 
-    state.filteredStores = [...state.stores];
+    state.filteredStores = state.stores.filter(store => store.isOriginal);
     return true;
   } catch (err) {
     console.error('Failed to load stores:', err);
@@ -211,17 +271,20 @@ function addMapLayers() {
     iconCreateFunction: function (cluster) {
       const markers = cluster.getAllChildMarkers();
       const products = new Set();
+      let hasEstimatedStore = false;
       
       markers.forEach(m => {
         m.storeData.products.forEach(product => products.add(product));
+        if (m.storeData.estimatedRank) hasEstimatedStore = true;
       });
       
       const clusterClass = getProductVariant([...products], 'cluster');
+      const estimatedClass = hasEstimatedStore ? ' cluster-estimated' : '';
       
       const count = markers.length;
       return L.divIcon({
         html: '<div><span>' + count + '</span></div>',
-        className: 'marker-cluster ' + clusterClass,
+        className: 'marker-cluster ' + clusterClass + estimatedClass,
         iconSize: L.point(40, 40)
       });
     }
@@ -230,9 +293,10 @@ function addMapLayers() {
   // Add individual markers
   state.filteredStores.forEach(store => {
     const ptClass = getProductVariant(store.products, 'point');
+    const estimatedClass = store.estimatedRank ? ' estimated-strong' : '';
 
     const icon = L.divIcon({
-      className: 'custom-point ' + ptClass,
+      className: 'custom-point ' + ptClass + estimatedClass,
       iconSize: [16, 16],
       iconAnchor: [8, 8],
       popupAnchor: [0, -10]
@@ -240,30 +304,6 @@ function addMapLayers() {
 
     const marker = L.marker([store.lat, store.lng], { icon });
     marker.storeData = store;
-    
-    // Popup creation
-    const tags = renderProductTags(store.products);
-
-    const phoneHtml = store.phone
-      ? `<a class="popup-phone" href="tel:${escapeHtml(store.phone)}">${escapeHtml(store.phone)}</a>`
-      : '';
-
-    const popupHtml = `
-      <div class="store-popup">
-        <h3 class="popup-name">${escapeHtml(store.name)}</h3>
-        <p class="popup-address">${escapeHtml(store.address)}</p>
-        ${phoneHtml}
-        <div class="popup-tags">${tags}</div>
-      </div>
-    `;
-
-    // Only bind popup on desktop
-    if (window.innerWidth > 768) {
-      marker.bindPopup(popupHtml, {
-        closeButton: true,
-        autoPanPadding: [20, 20]
-      });
-    }
     
     marker.on('click', () => {
       showStorePanel(store);
@@ -306,6 +346,18 @@ function showStorePanel(store) {
 
   // Tags
   dom.panelTags.innerHTML = renderProductTags(store.products);
+
+  if (store.estimatedRank) {
+    const confidenceLabels = { high: '高信心', medium: '中信心', low: '低信心' };
+    dom.panelEstimatedRank.textContent = `#${store.estimatedRank.toLocaleString()}`;
+    dom.panelEstimatedMeta.textContent = confidenceLabels[store.estimatedConfidence] || '推估名單';
+    dom.panelEstimatedNote.textContent = store.isOriginal
+      ? '依公開配貨訊號推估，非 7-ELEVEN 官方或實際 POS 業績。'
+      : '依公開配貨訊號推估；此店未列入目前 OP-14～16 名單。';
+    dom.panelEstimated.style.display = '';
+  } else {
+    dom.panelEstimated.style.display = 'none';
+  }
 
   // Navigate link
   dom.panelNavigate.href = `https://www.google.com/maps/dir/?api=1&destination=${store.lat},${store.lng}`;
@@ -377,7 +429,7 @@ function handleSearch() {
 
   dom.searchResults.innerHTML = results
     .map(s => {
-      const tags = renderProductTags(s.products);
+      const tags = renderStoreTags(s);
 
       return `
         <div class="search-result-item" data-store-id="${s.id}">
@@ -400,18 +452,7 @@ function handleSearch() {
         dom.searchResults.style.display = 'none';
         dom.searchInput.blur();
         
-        // Find marker in cluster and open popup
-        const layers = state.markerCluster.getLayers();
-        const targetLayer = layers.find(l => String(l.storeData.id) === String(store.id));
-        
         flyToStore(store);
-        
-        if (targetLayer && window.innerWidth > 768) {
-          state.markerCluster.zoomToShowLayer(targetLayer, () => {
-            targetLayer.openPopup();
-          });
-        }
-        
         showStorePanel(store);
       }
     });
@@ -459,12 +500,16 @@ function populateCityFilter() {
 }
 
 function applyFilters() {
-  let filtered = [...state.stores];
+  let filtered = state.activeFilter === ESTIMATED_FILTER
+    ? state.stores.filter(store => store.estimatedRank)
+    : state.stores.filter(store => store.isOriginal);
 
   const activeProduct = Object.entries(PRODUCT_META)
     .find(([, meta]) => meta.filter === state.activeFilter)?.[0];
 
-  if (activeProduct) {
+  if (state.activeFilter === ESTIMATED_FILTER) {
+    // The initial collection already contains only estimated TOP 2,000 stores.
+  } else if (activeProduct) {
     filtered = filtered.filter(s => s.products.includes(activeProduct));
   } else if (state.activeFilter === 'near' && state.userLocation) {
     filtered.forEach(s => {
@@ -499,7 +544,10 @@ function updateMapData() {
 // ---------------------------------------------------------------------------
 function updateStats() {
   animateNumber(dom.statsCount, state.filteredStores.length);
-  dom.statsTotal.textContent = state.stores.length.toLocaleString();
+  const total = state.activeFilter === ESTIMATED_FILTER
+    ? state.estimatedStoreCount
+    : state.originalStoreCount;
+  dom.statsTotal.textContent = total.toLocaleString();
 }
 
 // ---------------------------------------------------------------------------
