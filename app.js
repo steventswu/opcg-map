@@ -11,6 +11,11 @@ const CLUSTER_MAX_ZOOM = 16;
 const CLUSTER_RADIUS = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 const FLY_TO_ZOOM = 16;
+const PRODUCT_META = {
+  'OP-14': { filter: 'op14', tagClass: 'tag-op14' },
+  'OP-15': { filter: 'op15', tagClass: 'tag-op15' },
+  'OP-16': { filter: 'op16', tagClass: 'tag-op16' },
+};
 
 // ---------------------------------------------------------------------------
 // State
@@ -18,7 +23,7 @@ const FLY_TO_ZOOM = 16;
 const state = {
   stores: [],
   filteredStores: [],
-  activeFilter: 'all',    // 'all' | 'op15' | 'op16'
+  activeFilter: 'all',    // 'all' | 'op14' | 'op15' | 'op16' | 'near'
   activeCity: 'all',
   selectedStore: null,
   searchQuery: '',
@@ -90,6 +95,19 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function renderProductTags(products) {
+  return products.map(product => {
+    const cls = PRODUCT_META[product]?.tagClass || '';
+    return `<span class="tag ${cls}">${escapeHtml(product)}</span>`;
+  }).join('');
+}
+
+function getProductVariant(products, prefix) {
+  const knownProducts = [...new Set(products.filter(product => PRODUCT_META[product]))];
+  if (knownProducts.length !== 1) return `${prefix}-both`;
+  return `${prefix}-${PRODUCT_META[knownProducts[0]].filter}`;
+}
+
 // ---------------------------------------------------------------------------
 // Data Loading
 // ---------------------------------------------------------------------------
@@ -133,12 +151,13 @@ function extractCity(address) {
 function normalizeProducts(p) {
   if (typeof p === 'string') p = [p];
   if (!Array.isArray(p)) return [];
-  return p.map(x => {
-    const s = String(x).toUpperCase().replace(/[\s-_]/g, '');
+  return [...new Set(p.map(x => {
+    const s = String(x).toUpperCase().replace(/[\s_-]/g, '');
+    if (s.includes('OP14') || s === '14') return 'OP-14';
     if (s.includes('OP15') || s.includes('15')) return 'OP-15';
     if (s.includes('OP16') || s.includes('16')) return 'OP-16';
     return String(x);
-  }).filter(Boolean);
+  }).filter(Boolean))];
 }
 
 // ---------------------------------------------------------------------------
@@ -191,18 +210,13 @@ function addMapLayers() {
     showCoverageOnHover: false,
     iconCreateFunction: function (cluster) {
       const markers = cluster.getAllChildMarkers();
-      let hasOP15 = false;
-      let hasOP16 = false;
+      const products = new Set();
       
       markers.forEach(m => {
-        const store = m.storeData;
-        if (store.products.includes('OP-15')) hasOP15 = true;
-        if (store.products.includes('OP-16')) hasOP16 = true;
+        m.storeData.products.forEach(product => products.add(product));
       });
       
-      let clusterClass = 'cluster-both';
-      if (hasOP15 && !hasOP16) clusterClass = 'cluster-op15';
-      else if (!hasOP15 && hasOP16) clusterClass = 'cluster-op16';
+      const clusterClass = getProductVariant([...products], 'cluster');
       
       const count = markers.length;
       return L.divIcon({
@@ -215,9 +229,7 @@ function addMapLayers() {
 
   // Add individual markers
   state.filteredStores.forEach(store => {
-    let ptClass = 'point-both';
-    if (store.products.includes('OP-15') && !store.products.includes('OP-16')) ptClass = 'point-op15';
-    else if (!store.products.includes('OP-15') && store.products.includes('OP-16')) ptClass = 'point-op16';
+    const ptClass = getProductVariant(store.products, 'point');
 
     const icon = L.divIcon({
       className: 'custom-point ' + ptClass,
@@ -230,10 +242,7 @@ function addMapLayers() {
     marker.storeData = store;
     
     // Popup creation
-    const tags = store.products.map(p => {
-      const cls = p === 'OP-15' ? 'tag-op15' : 'tag-op16';
-      return `<span class="tag ${cls}">${escapeHtml(p)}</span>`;
-    }).join('');
+    const tags = renderProductTags(store.products);
 
     const phoneHtml = store.phone
       ? `<a class="popup-phone" href="tel:${escapeHtml(store.phone)}">${escapeHtml(store.phone)}</a>`
@@ -296,12 +305,7 @@ function showStorePanel(store) {
   }
 
   // Tags
-  dom.panelTags.innerHTML = store.products
-    .map(p => {
-      const cls = p === 'OP-15' ? 'tag-op15' : 'tag-op16';
-      return `<span class="tag ${cls}">${escapeHtml(p)}</span>`;
-    })
-    .join('');
+  dom.panelTags.innerHTML = renderProductTags(store.products);
 
   // Navigate link
   dom.panelNavigate.href = `https://www.google.com/maps/dir/?api=1&destination=${store.lat},${store.lng}`;
@@ -373,12 +377,7 @@ function handleSearch() {
 
   dom.searchResults.innerHTML = results
     .map(s => {
-      const tags = s.products
-        .map(p => {
-          const cls = p === 'OP-15' ? 'tag-op15' : 'tag-op16';
-          return `<span class="tag ${cls}">${escapeHtml(p)}</span>`;
-        })
-        .join('');
+      const tags = renderProductTags(s.products);
 
       return `
         <div class="search-result-item" data-store-id="${s.id}">
@@ -462,10 +461,11 @@ function populateCityFilter() {
 function applyFilters() {
   let filtered = [...state.stores];
 
-  if (state.activeFilter === 'op15') {
-    filtered = filtered.filter(s => s.products.includes('OP-15'));
-  } else if (state.activeFilter === 'op16') {
-    filtered = filtered.filter(s => s.products.includes('OP-16'));
+  const activeProduct = Object.entries(PRODUCT_META)
+    .find(([, meta]) => meta.filter === state.activeFilter)?.[0];
+
+  if (activeProduct) {
+    filtered = filtered.filter(s => s.products.includes(activeProduct));
   } else if (state.activeFilter === 'near' && state.userLocation) {
     filtered.forEach(s => {
       s.distance = getDistance(state.userLocation.lat, state.userLocation.lng, s.lat, s.lng);

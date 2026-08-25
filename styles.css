@@ -16,11 +16,13 @@
   --text-secondary: #8b9dc3;
   --text-muted: #4a5e80;
 
+  --accent-op14: #fbbf24;
   --accent-op15: #ff6b35;
   --accent-op16: #00d4ff;
   --accent-both: #a855f7;
   --accent-gold: #fbbf24;
 
+  --glow-op14: rgba(251, 191, 36, 0.45);
   --glow-op15: rgba(255, 107, 53, 0.45);
   --glow-op16: rgba(0, 212, 255, 0.45);
   --glow-both: rgba(168, 85, 247, 0.35);
@@ -476,6 +478,11 @@ body {
   background: rgba(0, 212, 255, 0.08);
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.12);
 }
+.filter-pill.active[data-filter="op14"] {
+  border-color: var(--accent-op14);
+  background: rgba(251, 191, 36, 0.08);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.12);
+}
 .filter-pill.active[data-filter="op15"] {
   border-color: var(--accent-op15);
   background: rgba(255, 107, 53, 0.08);
@@ -499,7 +506,11 @@ body {
   flex-shrink: 0;
 }
 .dot-all {
-  background: linear-gradient(135deg, var(--accent-op15), var(--accent-op16));
+  background: linear-gradient(135deg, var(--accent-op14), var(--accent-op15), var(--accent-op16));
+}
+.dot-op14 {
+  background: var(--accent-op14);
+  box-shadow: 0 0 6px var(--glow-op14);
 }
 .dot-op15 {
   background: var(--accent-op15);
@@ -709,6 +720,11 @@ body {
   letter-spacing: 0.04em;
   border-radius: var(--radius-full);
   text-transform: uppercase;
+}
+.tag-op14 {
+  color: var(--accent-op14);
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
 }
 .tag-op15 {
   color: var(--accent-op15);
@@ -966,6 +982,9 @@ body {
 .cluster-both { background-color: rgba(168, 85, 247, 0.12); }
 .cluster-both div { background-color: var(--accent-both); }
 
+.cluster-op14 { background-color: rgba(251, 191, 36, 0.12); }
+.cluster-op14 div { background-color: var(--accent-op14); }
+
 .cluster-op15 { background-color: rgba(255, 107, 53, 0.12); }
 .cluster-op15 div { background-color: var(--accent-op15); }
 
@@ -978,6 +997,7 @@ body {
   border: 2px solid rgba(255,255,255,0.25);
   background-clip: padding-box;
 }
+.point-op14 { background-color: var(--accent-op14); box-shadow: 0 0 12px var(--accent-op14); }
 .point-op15 { background-color: var(--accent-op15); box-shadow: 0 0 12px var(--accent-op15); }
 .point-op16 { background-color: var(--accent-op16); box-shadow: 0 0 12px var(--accent-op16); }
 .point-both { background-color: var(--accent-both); box-shadow: 0 0 12px var(--accent-both); }

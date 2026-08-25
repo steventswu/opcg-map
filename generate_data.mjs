@@ -25,12 +25,12 @@ async function fetchStoreCoords(id, retries = 3) {
       res.setEncoding('utf8');
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        const xMatch = data.match(/<X>(\d+)<\/X>/);
-        const yMatch = data.match(/<Y>(\d+)<\/Y>/);
+        const xMatch = data.match(/<X>([\d.]+)<\/X>/);
+        const yMatch = data.match(/<Y>([\d.]+)<\/Y>/);
         if (xMatch && yMatch) {
           resolve({
-            lng: parseInt(xMatch[1]) / 1000000,
-            lat: parseInt(yMatch[1]) / 1000000
+            lng: Number(xMatch[1]) / 1000000,
+            lat: Number(yMatch[1]) / 1000000
           });
         } else {
           resolve(null);
@@ -83,11 +83,66 @@ function getFallbackCoords(city, id) {
   };
 }
 
+function parseCsvLine(line) {
+  const values = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        value += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      values.push(value.trim());
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+
+  values.push(value.trim());
+  return values;
+}
+
+function normalizeHeader(value) {
+  return value.replace(/^\uFEFF/, '').replace(/\s/g, '').replace(/巿/g, '市');
+}
+
+function extractCity(address) {
+  return Object.keys(CITY_COORDS).find(city => address.startsWith(city)) || '';
+}
+
 // ─── Main Processing ───
 async function run() {
   console.log('🗺️  Loading store lists...');
   const storesMap = new Map();
   let totalSkipped = 0;
+  const outputPath = join(__dirname, 'data', 'stores.json');
+  const cachedCoordinates = new Map();
+
+  if (process.env.REFRESH_COORDS !== '1') {
+    try {
+      const existingData = JSON.parse(readFileSync(outputPath, 'utf-8'));
+      const existingStores = Array.isArray(existingData) ? existingData : (existingData.stores || []);
+      existingStores.forEach(store => {
+        if (store.id && Number.isFinite(store.lat) && Number.isFinite(store.lng)) {
+          const fallback = getFallbackCoords(store.city, String(store.id));
+          const isFallback = Math.abs(store.lat - fallback.lat) < 1e-10
+            && Math.abs(store.lng - fallback.lng) < 1e-10;
+          if (isFallback) return;
+          cachedCoordinates.set(String(store.id), { lat: store.lat, lng: store.lng });
+        }
+      });
+    } catch {
+      // No existing output yet; all stores will be geocoded below.
+    }
+  }
 
   function processCsv(filename, productTag) {
     const csvPath = join(__dirname, 'data', filename);
@@ -101,17 +156,33 @@ async function run() {
 
     const lines = csvContent.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
     if (lines.length === 0) return;
+
+    const headers = parseCsvLine(lines[0]).map(normalizeHeader);
+    const idIndex = headers.indexOf('店號');
+    const nameIndex = headers.indexOf('店名');
+    const phoneIndex = headers.indexOf('電話');
+    const addressIndex = headers.indexOf('地址');
+    const cityIndex = headers.indexOf('縣市');
+
+    if ([idIndex, nameIndex, phoneIndex, addressIndex].some(index => index === -1)) {
+      console.log(`⚠️  Skipping ${filename}: unsupported CSV headers (${headers.join(', ')})`);
+      return;
+    }
     
     let processed = 0;
     for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length < 4) { totalSkipped++; continue; }
-      
-      const id = parts[0].trim();
-      const name = parts[1].trim();
-      const city = parts[2].trim();
-      const address = parts.slice(3, -1).join(',').trim();
-      const phone = parts[parts.length - 1].trim();
+      const parts = parseCsvLine(lines[i]);
+      const id = parts[idIndex]?.trim() || '';
+      const name = parts[nameIndex]?.trim() || '';
+      const phone = parts[phoneIndex]?.trim() || '';
+      let address = parts[addressIndex]?.trim() || '';
+      const city = cityIndex >= 0
+        ? (parts[cityIndex]?.trim() || '')
+        : extractCity(address);
+
+      if (city && address.startsWith(city)) {
+        address = address.slice(city.length);
+      }
 
       if (!id || !name || !city) { totalSkipped++; continue; }
       
@@ -129,23 +200,32 @@ async function run() {
     console.log(`✅ Processed ${processed} stores from ${filename}`);
   }
 
+  processCsv('op14.csv', 'op14');
   processCsv('op15.csv', 'op15');
   processCsv('op16.csv', 'op16');
   
   const stores = Array.from(storesMap.values());
-  console.log(`\n✅ Total unique stores to geocode: ${stores.length}`);
+  const storesToGeocode = stores.filter(store => {
+    const cached = cachedCoordinates.get(store.id);
+    if (!cached) return true;
+    store.lat = cached.lat;
+    store.lng = cached.lng;
+    return false;
+  });
+  console.log(`\n✅ Total unique stores: ${stores.length}`);
+  console.log(`♻️  Reused coordinates: ${stores.length - storesToGeocode.length}`);
 
   // Fetch coordinates concurrently (Chunk size = 20)
-  console.log(`\n🚀 Fetching real coordinates from 7-11 e-map API...`);
+  console.log(`\n🚀 Fetching coordinates for ${storesToGeocode.length} uncached stores from 7-11 e-map API...`);
   const CHUNK_SIZE = 20;
   let successCount = 0;
   let fallbackCount = 0;
 
-  for (let i = 0; i < stores.length; i += CHUNK_SIZE) {
-    const chunk = stores.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < storesToGeocode.length; i += CHUNK_SIZE) {
+    const chunk = storesToGeocode.slice(i, i + CHUNK_SIZE);
     
     // Show progress
-    process.stdout.write(`\r⏳ Processing ${i + 1} to ${Math.min(i + CHUNK_SIZE, stores.length)} of ${stores.length}...`);
+    process.stdout.write(`\r⏳ Processing ${i + 1} to ${Math.min(i + CHUNK_SIZE, storesToGeocode.length)} of ${storesToGeocode.length}...`);
     
     const promises = chunk.map(async (store) => {
       const coords = await fetchStoreCoords(store.id);
@@ -173,9 +253,9 @@ async function run() {
   if (fallbackCount > 0) console.log(`⚠️ Fallback Coordinates: ${fallbackCount}`);
 
   // Write output
-  const outputPath = join(__dirname, 'data', 'stores.json');
   writeFileSync(outputPath, JSON.stringify(stores, null, 2), 'utf-8');
   console.log(`\n🎉 Written ${stores.length} stores to ${outputPath}`);
+  if (totalSkipped > 0) console.log(`⚠️ Skipped ${totalSkipped} invalid rows`);
 }
 
 run().catch(console.error);
