@@ -11,6 +11,10 @@ const CLUSTER_MAX_ZOOM = 16;
 const CLUSTER_RADIUS = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 const FLY_TO_ZOOM = 16;
+const LOCATION_ZOOM = 15;
+const LOCATION_FILTER_UPDATE_MS = 2000;
+const NEARBY_RADIUS_KM = 20;
+const NEARBY_STORE_LIMIT = 50;
 const PRODUCT_META = {
   'OP-14': { filter: 'op14', tagClass: 'tag-op14' },
   'OP-15': { filter: 'op15', tagClass: 'tag-op15' },
@@ -33,6 +37,12 @@ const state = {
   cities: [],
   debounceTimer: null,
   userMarker: null,
+  userAccuracyCircle: null,
+  userLocation: null,
+  locationWatchId: null,
+  isTrackingLocation: false,
+  hasLocationFix: false,
+  lastNearbyUpdateAt: 0,
   originalStoreCount: 0,
   estimatedStoreCount: 0,
   estimatedMeta: null,
@@ -55,6 +65,9 @@ const dom = {
   filterPills: $$('.filter-pill'),
   cityFilter: $('#city-filter'),
   geolocateBtn: $('#geolocate-btn'),
+  geolocateLabel: $('#geolocate-label'),
+  locationStatus: $('#location-status'),
+  locationStatusText: $('#location-status-text'),
   storePanel: $('#store-panel'),
   panelClose: $('#panel-close'),
   panelName: $('#panel-name'),
@@ -64,6 +77,8 @@ const dom = {
   panelEstimatedMeta: $('#panel-estimated-meta'),
   panelEstimatedNote: $('#panel-estimated-note'),
   panelAddress: $('#panel-address'),
+  panelDistanceRow: $('#panel-distance-row'),
+  panelDistance: $('#panel-distance'),
   panelPhone: $('#panel-phone'),
   panelNavigate: $('#panel-navigate'),
   statsCount: $('#stats-count'),
@@ -334,6 +349,7 @@ function showStorePanel(store) {
 
   dom.panelName.textContent = store.name;
   dom.panelAddress.textContent = store.address;
+  updatePanelDistance(store);
 
   // Phone
   if (store.phone) {
@@ -375,6 +391,22 @@ function closeStorePanel() {
     dom.storePanel.style.display = 'none';
     dom.storePanel.classList.remove('closing');
   }, { once: true });
+}
+
+function updatePanelDistance(store) {
+  if (!store || !state.userLocation) {
+    dom.panelDistanceRow.style.display = 'none';
+    return;
+  }
+
+  const distance = getDistance(
+    state.userLocation.lat,
+    state.userLocation.lng,
+    store.lat,
+    store.lng
+  );
+  dom.panelDistance.textContent = `距離目前位置約 ${formatStoreDistance(distance)}`;
+  dom.panelDistanceRow.style.display = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -473,6 +505,20 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * c; // Distance in km
 }
 
+function formatStoreDistance(distanceKm) {
+  if (distanceKm < 1) {
+    return `${Math.max(1, Math.round(distanceKm * 1000))} 公尺`;
+  }
+  return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} 公里`;
+}
+
+function formatAccuracy(accuracyMeters) {
+  if (accuracyMeters >= 1000) {
+    return `${(accuracyMeters / 1000).toFixed(1)} 公里`;
+  }
+  return `${Math.max(1, Math.round(accuracyMeters))} 公尺`;
+}
+
 function setupFilters() {
   dom.filterPills.forEach(pill => {
     pill.addEventListener('click', () => {
@@ -515,8 +561,10 @@ function applyFilters() {
     filtered.forEach(s => {
       s.distance = getDistance(state.userLocation.lat, state.userLocation.lng, s.lat, s.lng);
     });
-    // Filter within 20km and take top 50
-    filtered = filtered.filter(s => s.distance <= 20).sort((a, b) => a.distance - b.distance).slice(0, 50);
+    filtered = filtered
+      .filter(s => s.distance <= NEARBY_RADIUS_KM)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, NEARBY_STORE_LIMIT);
   }
 
   if (state.activeCity !== 'all') {
@@ -555,56 +603,209 @@ function updateStats() {
 // ---------------------------------------------------------------------------
 function setupGeolocation() {
   dom.geolocateBtn.addEventListener('click', () => {
-    if (!navigator.geolocation) {
-      alert('您的瀏覽器不支援定位功能');
-      return;
+    if (state.isTrackingLocation) {
+      stopLocationTracking();
+    } else {
+      startLocationTracking();
     }
+  });
 
-    dom.geolocateBtn.classList.add('locating');
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        dom.geolocateBtn.classList.remove('locating');
-        const { latitude, longitude } = pos.coords;
-        state.userLocation = { lat: latitude, lng: longitude };
-        addUserLocationMarker(latitude, longitude);
-        state.map.flyTo([latitude, longitude], 14, { duration: 1.2 });
-        
-        // Remove active class from other pills (if any)
-        dom.filterPills.forEach(p => p.classList.remove('active'));
-        state.activeFilter = 'near';
-        applyFilters();
-      },
-      (err) => {
-        dom.geolocateBtn.classList.remove('locating');
-        if (err.code === err.PERMISSION_DENIED) {
-          alert('定位權限已被拒絕，請在瀏覽器設定中啟用');
-        } else {
-          alert('無法取得位置資訊，請再試一次');
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000,
-      }
-    );
+  window.addEventListener('pagehide', () => {
+    stopLocationTracking({ silent: true });
   });
 }
 
-function addUserLocationMarker(lat, lng) {
-  if (state.userMarker) {
-    state.map.removeLayer(state.userMarker);
+function setLocationUi(mode, message = '') {
+  const isLocating = mode === 'locating';
+  const isTracking = mode === 'tracking';
+
+  dom.geolocateBtn.classList.toggle('locating', isLocating);
+  dom.geolocateBtn.classList.toggle('tracking', isTracking);
+  dom.geolocateBtn.setAttribute('aria-pressed', String(state.isTrackingLocation));
+  dom.geolocateBtn.setAttribute(
+    'aria-label',
+    state.isTrackingLocation ? '停止即時定位' : '開始即時定位'
+  );
+  dom.geolocateBtn.title = state.isTrackingLocation ? '停止即時定位' : '即時定位附近門市';
+
+  if (isLocating) dom.geolocateLabel.textContent = '定位中…';
+  else if (isTracking) dom.geolocateLabel.textContent = '停止追蹤';
+  else dom.geolocateLabel.textContent = '即時定位';
+
+  dom.locationStatus.dataset.state = mode;
+  dom.locationStatusText.textContent = message;
+  dom.locationStatus.hidden = !message;
+}
+
+function startLocationTracking() {
+  if (!navigator.geolocation) {
+    setLocationUi('error', '此瀏覽器不支援 GPS 定位');
+    alert('您的瀏覽器不支援定位功能');
+    return;
   }
 
-  const icon = L.divIcon({
-    className: 'custom-user-marker',
-    html: '<div style="width: 20px; height: 20px; background: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 12px rgba(59, 130, 246, 0.6), 0 0 30px rgba(59, 130, 246, 0.3);"></div>',
-    iconSize: [26, 26],
-    iconAnchor: [13, 13]
-  });
+  state.isTrackingLocation = true;
+  state.hasLocationFix = false;
+  state.lastNearbyUpdateAt = 0;
+  setLocationUi('locating', '正在取得高精確度 GPS 位置…');
 
-  state.userMarker = L.marker([lat, lng], { icon }).addTo(state.map);
+  try {
+    state.locationWatchId = navigator.geolocation.watchPosition(
+      handleLocationUpdate,
+      handleLocationError,
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 1000,
+      }
+    );
+  } catch (err) {
+    state.isTrackingLocation = false;
+    state.locationWatchId = null;
+    setLocationUi('error', '無法啟動定位，請確認瀏覽器權限');
+    console.error('Failed to start location tracking:', err);
+  }
+}
+
+function stopLocationTracking({ silent = false } = {}) {
+  if (state.locationWatchId != null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(state.locationWatchId);
+  }
+
+  state.locationWatchId = null;
+  state.isTrackingLocation = false;
+  state.hasLocationFix = false;
+  setUserMarkerTrackingState(false);
+
+  if (!silent) {
+    const lastAccuracy = state.userLocation?.accuracy;
+    const message = lastAccuracy
+      ? `定位已停止 · 上次精度約 ±${formatAccuracy(lastAccuracy)}`
+      : '定位已停止';
+    setLocationUi('paused', message);
+  }
+}
+
+function handleLocationUpdate(position) {
+  if (!state.isTrackingLocation) return;
+
+  const { latitude, longitude, accuracy, heading, speed } = position.coords;
+  if (![latitude, longitude].every(Number.isFinite)) return;
+
+  const isFirstFix = !state.hasLocationFix;
+  const timestamp = position.timestamp || Date.now();
+  const normalizedAccuracy = Number.isFinite(accuracy) ? Math.max(accuracy, 1) : 1;
+
+  state.hasLocationFix = true;
+  state.userLocation = {
+    lat: latitude,
+    lng: longitude,
+    accuracy: normalizedAccuracy,
+    heading: Number.isFinite(heading) ? heading : null,
+    speed: Number.isFinite(speed) ? speed : null,
+    timestamp,
+  };
+
+  updatePanelDistance(state.selectedStore);
+  addOrUpdateUserLocationMarker(latitude, longitude, normalizedAccuracy);
+
+  const speedText = Number.isFinite(speed) && speed >= 1
+    ? ` · ${Math.round(speed * 3.6)} km/h`
+    : '';
+  setLocationUi(
+    'tracking',
+    `即時追蹤中 · 精度約 ±${formatAccuracy(normalizedAccuracy)}${speedText}`
+  );
+
+  if (isFirstFix) {
+    dom.filterPills.forEach(p => p.classList.remove('active'));
+    dom.cityFilter.value = 'all';
+    state.activeCity = 'all';
+    state.activeFilter = 'near';
+    state.lastNearbyUpdateAt = timestamp;
+    applyFilters();
+    state.map.flyTo([latitude, longitude], LOCATION_ZOOM, { duration: 1.2 });
+    return;
+  }
+
+  if (
+    state.activeFilter === 'near'
+    && timestamp - state.lastNearbyUpdateAt >= LOCATION_FILTER_UPDATE_MS
+  ) {
+    state.lastNearbyUpdateAt = timestamp;
+    applyFilters();
+  }
+
+  const innerBounds = state.map.getBounds().pad(-0.2);
+  if (!innerBounds.contains([latitude, longitude])) {
+    state.map.panTo([latitude, longitude], { animate: true, duration: 0.6 });
+  }
+}
+
+function handleLocationError(err) {
+  if (err.code === err.PERMISSION_DENIED) {
+    stopLocationTracking({ silent: true });
+    setLocationUi('error', '定位權限遭拒，請至瀏覽器設定開啟');
+    alert('定位權限已被拒絕，請在瀏覽器設定中啟用');
+    return;
+  }
+
+  const message = err.code === err.TIMEOUT
+    ? 'GPS 回應較慢，正在持續重試…'
+    : '暫時無法取得位置，正在持續重試…';
+  setLocationUi('locating', message);
+}
+
+function addOrUpdateUserLocationMarker(lat, lng, accuracy) {
+  const latLng = [lat, lng];
+  const accuracyText = `你的位置 · 精度約 ±${formatAccuracy(accuracy)}`;
+
+  if (state.userMarker) {
+    state.userMarker.setLatLng(latLng);
+    state.userMarker.setTooltipContent(accuracyText);
+  } else {
+    const icon = L.divIcon({
+      className: 'custom-user-marker',
+      html: `
+        <div class="user-location-marker tracking">
+          <span class="user-location-pulse"></span>
+          <span class="user-location-dot"></span>
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+
+    state.userMarker = L.marker(latLng, { icon, zIndexOffset: 1000 })
+      .bindTooltip(accuracyText, { direction: 'top', offset: [0, -14], opacity: 0.95 })
+      .addTo(state.map);
+  }
+
+  if (state.userAccuracyCircle) {
+    state.userAccuracyCircle.setLatLng(latLng);
+    state.userAccuracyCircle.setRadius(accuracy);
+  } else {
+    state.userAccuracyCircle = L.circle(latLng, {
+      radius: accuracy,
+      color: '#60a5fa',
+      weight: 1,
+      opacity: 0.75,
+      fillColor: '#3b82f6',
+      fillOpacity: 0.1,
+      interactive: false,
+      className: 'user-accuracy-circle',
+    }).addTo(state.map);
+    state.userAccuracyCircle.bringToBack();
+  }
+
+  setUserMarkerTrackingState(true);
+}
+
+function setUserMarkerTrackingState(isTracking) {
+  const markerElement = state.userMarker?.getElement();
+  markerElement
+    ?.querySelector('.user-location-marker')
+    ?.classList.toggle('tracking', isTracking);
 }
 
 // ---------------------------------------------------------------------------

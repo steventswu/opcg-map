@@ -139,6 +139,10 @@ body {
   0%, 100% { box-shadow: 0 0 6px var(--accent-op15); }
   50% { box-shadow: 0 0 24px var(--accent-op15), 0 0 48px rgba(255, 107, 53, 0.2); }
 }
+@keyframes locationRadar {
+  0% { transform: scale(0.45); opacity: 0.8; }
+  75%, 100% { transform: scale(1.7); opacity: 0; }
+}
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -654,6 +658,71 @@ body {
   animation: glowPulse 1.5s ease-in-out infinite;
   color: var(--accent-op16);
 }
+.fab-btn.tracking {
+  color: #eff6ff;
+  background: rgba(29, 78, 216, 0.9);
+  border-color: rgba(147, 197, 253, 0.8);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.45);
+}
+.fab-btn.tracking:hover {
+  color: #fff;
+  border-color: #bfdbfe;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.58);
+}
+
+.location-status {
+  position: absolute;
+  right: 16px;
+  bottom: calc(124px + var(--safe-bottom));
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(290px, calc(100vw - 32px));
+  padding: 9px 13px;
+  color: #dbeafe;
+  background: var(--bg-glass-heavy);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  pointer-events: none;
+  animation: fadeIn 0.2s ease;
+}
+.location-status[hidden] {
+  display: none;
+}
+.location-status[data-state="paused"] {
+  color: var(--text-secondary);
+  border-color: var(--border-glass-hover);
+}
+.location-status[data-state="error"] {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+.location-status-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: #60a5fa;
+  border-radius: 50%;
+  box-shadow: 0 0 9px rgba(96, 165, 250, 0.8);
+}
+.location-status[data-state="tracking"] .location-status-dot,
+.location-status[data-state="locating"] .location-status-dot {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.location-status[data-state="paused"] .location-status-dot {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+.location-status[data-state="error"] .location-status-dot {
+  background: #f87171;
+  box-shadow: 0 0 9px rgba(248, 113, 113, 0.65);
+}
 
 /* ---------- Store Detail Panel ---------- */
 .store-panel {
@@ -853,6 +922,10 @@ body {
   font-size: 0.9rem;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+.location-distance {
+  color: #93c5fd;
+  font-weight: 600;
 }
 .detail-link {
   font-size: 0.9rem;
@@ -1136,6 +1209,41 @@ body {
   box-shadow: 0 0 12px var(--glow-estimated);
 }
 
+/* Live user location */
+.custom-user-marker {
+  background: transparent;
+  border: none;
+}
+.user-location-marker {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-location-pulse {
+  position: absolute;
+  inset: 4px;
+  background: rgba(59, 130, 246, 0.32);
+  border: 1px solid rgba(147, 197, 253, 0.65);
+  border-radius: 50%;
+  opacity: 0;
+}
+.user-location-marker.tracking .user-location-pulse {
+  animation: locationRadar 2s ease-out infinite;
+}
+.user-location-dot {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  background: #3b82f6;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.85), 0 0 24px rgba(59, 130, 246, 0.4);
+}
+
 /* ---------- Custom Marker Animations ---------- */
 .marker-pulse {
   animation: glowPulse 2s ease-in-out infinite;
@@ -1181,6 +1289,11 @@ body {
     right: 20px;
   }
 
+  .location-status {
+    right: 20px;
+    bottom: calc(136px + var(--safe-bottom));
+  }
+
   #stats-bar {
     padding: 0 20px calc(16px + var(--safe-bottom));
   }
@@ -1194,5 +1307,17 @@ body {
   }
   .panel-content {
     padding: 8px 18px 20px;
+  }
+  .location-status {
+    max-width: calc(100vw - 24px);
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-location-marker.tracking .user-location-pulse,
+  .location-status[data-state="tracking"] .location-status-dot,
+  .location-status[data-state="locating"] .location-status-dot {
+    animation: none;
   }
 }
