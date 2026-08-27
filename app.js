@@ -15,6 +15,7 @@ const LOCATION_ZOOM = 15;
 const LOCATION_FILTER_UPDATE_MS = 2000;
 const NEARBY_RADIUS_KM = 20;
 const NEARBY_STORE_LIMIT = 50;
+const OPENFREEMAP_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
 const PRODUCT_META = {
   'OP-14': { filter: 'op14', tagClass: 'tag-op14' },
   'OP-15': { filter: 'op15', tagClass: 'tag-op15' },
@@ -248,17 +249,11 @@ function initMap() {
     worldCopyJump: true,
   }).setView(TAIWAN_CENTER, TAIWAN_ZOOM);
 
-  // OpenStreetMap raster tiles do not require an API key. The dark appearance
-  // is applied locally with the osm-dark-tiles CSS class.
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    className: 'osm-dark-tiles',
-    maxZoom: 19,
-  }).addTo(state.map);
-
   // Controls
   L.control.zoom({ position: 'topright' }).addTo(state.map);
   L.control.attribution({ position: 'bottomleft' }).addTo(state.map);
+
+  addBaseMapLayer(state.map);
 
   // Map Click (Close Panel/Popup)
   state.map.on('click', () => {
@@ -266,6 +261,82 @@ function initMap() {
   });
 
   return true;
+}
+
+function addBaseMapLayer(map) {
+  const supportsVectorMap = typeof L.maplibreGL === 'function'
+    && typeof globalThis.maplibregl !== 'undefined'
+    && supportsWebGL2();
+
+  if (supportsVectorMap) {
+    // OpenFreeMap's keyless Dark style is a maintained fork of the
+    // OpenMapTiles Dark Matter GL style. Leaflet continues to own all
+    // interactions, markers, clusters and GPS layers.
+    try {
+      const vectorLayer = L.maplibreGL({
+        style: OPENFREEMAP_DARK_STYLE,
+        interactive: false,
+      }).addTo(map);
+      registerDarkMatterImages(vectorLayer.getMaplibreMap());
+      return;
+    } catch (err) {
+      console.warn('Vector basemap initialization failed; using the raster fallback.', err);
+    }
+  }
+
+  console.warn('WebGL unavailable; using the keyless OpenStreetMap raster fallback.');
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    className: 'osm-dark-tiles',
+    maxZoom: 19,
+  }).addTo(map);
+}
+
+function registerDarkMatterImages(glMap) {
+  glMap.on('styleimagemissing', (event) => {
+    if (glMap.hasImage(event.id)) return;
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    if (event.id === 'circle-11') {
+      canvas.width = 22;
+      canvas.height = 22;
+      context.fillStyle = 'rgba(148, 163, 184, 0.82)';
+      context.beginPath();
+      context.arc(11, 11, 7, 0, Math.PI * 2);
+      context.fill();
+    } else if (event.id === 'wood-pattern') {
+      canvas.width = 16;
+      canvas.height = 16;
+      context.fillStyle = 'rgba(20, 24, 31, 0.55)';
+      context.fillRect(0, 0, 16, 16);
+      context.strokeStyle = 'rgba(71, 85, 105, 0.42)';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(-4, 16);
+      context.lineTo(16, -4);
+      context.moveTo(4, 20);
+      context.lineTo(20, 4);
+      context.stroke();
+    } else {
+      return;
+    }
+
+    glMap.addImage(event.id, context.getImageData(0, 0, canvas.width, canvas.height), {
+      pixelRatio: 2,
+    });
+  });
+}
+
+function supportsWebGL2() {
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2'));
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
