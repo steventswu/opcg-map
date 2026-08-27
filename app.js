@@ -248,16 +248,17 @@ function initMap() {
     worldCopyJump: true,
   }).setView(TAIWAN_CENTER, TAIWAN_ZOOM);
 
-  // CartoDB Dark Matter tiles
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19
+  // OpenStreetMap raster tiles do not require an API key. The dark appearance
+  // is applied locally with the osm-dark-tiles CSS class.
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    className: 'osm-dark-tiles',
+    maxZoom: 19,
   }).addTo(state.map);
 
   // Controls
   L.control.zoom({ position: 'topright' }).addTo(state.map);
-  L.control.attribution({ position: 'bottomright' }).addTo(state.map);
+  L.control.attribution({ position: 'bottomleft' }).addTo(state.map);
 
   // Map Click (Close Panel/Popup)
   state.map.on('click', () => {

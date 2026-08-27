@@ -1017,6 +1017,11 @@ body {
   font-family: var(--font-body);
 }
 
+/* Keep keyless OpenStreetMap raster tiles aligned with the app's dark theme. */
+.osm-dark-tiles {
+  filter: grayscale(0.65) invert(0.92) hue-rotate(180deg) brightness(0.62) contrast(1.18) saturate(0.7);
+}
+
 /* Popup */
 .leaflet-popup {
   z-index: 150;
@@ -1121,12 +1126,14 @@ body {
   border-bottom: none !important;
 }
 .leaflet-control-attribution {
-  background: rgba(10, 14, 23, 0.7) !important;
-  color: var(--text-muted) !important;
+  background: rgba(10, 14, 23, 0.82) !important;
+  color: #94a3b8 !important;
   font-size: 10px !important;
+  margin-left: 8px !important;
+  margin-bottom: calc(52px + var(--safe-bottom)) !important;
 }
 .leaflet-control-attribution a {
-  color: var(--text-muted) !important;
+  color: #94a3b8 !important;
 }
 
 /* Cluster Markers */
