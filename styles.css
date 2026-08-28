@@ -19,6 +19,7 @@
   --accent-op14: #fbbf24;
   --accent-op15: #ff6b35;
   --accent-op16: #00d4ff;
+  --accent-op17: #f43f5e;
   --accent-both: #a855f7;
   --accent-estimated: #86efac;
   --accent-gold: #fbbf24;
@@ -26,6 +27,7 @@
   --glow-op14: rgba(251, 191, 36, 0.45);
   --glow-op15: rgba(255, 107, 53, 0.45);
   --glow-op16: rgba(0, 212, 255, 0.45);
+  --glow-op17: rgba(244, 63, 94, 0.45);
   --glow-both: rgba(168, 85, 247, 0.35);
   --glow-estimated: rgba(134, 239, 172, 0.55);
 
@@ -507,6 +509,11 @@ body {
   background: rgba(0, 212, 255, 0.08);
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.12);
 }
+.filter-pill.active[data-filter="op17"] {
+  border-color: var(--accent-op17);
+  background: rgba(244, 63, 94, 0.08);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.14);
+}
 .filter-pill.active[data-filter="estimated"] {
   color: #d9ffe5;
   border-color: var(--accent-estimated);
@@ -558,7 +565,7 @@ body {
   flex-shrink: 0;
 }
 .dot-all {
-  background: linear-gradient(135deg, var(--accent-op14), var(--accent-op15), var(--accent-op16));
+  background: linear-gradient(135deg, var(--accent-op14), var(--accent-op15), var(--accent-op16), var(--accent-op17));
 }
 .dot-op14 {
   background: var(--accent-op14);
@@ -571,6 +578,10 @@ body {
 .dot-op16 {
   background: var(--accent-op16);
   box-shadow: 0 0 6px var(--glow-op16);
+}
+.dot-op17 {
+  background: var(--accent-op17);
+  box-shadow: 0 0 6px var(--glow-op17);
 }
 
 .filter-divider {
@@ -852,6 +863,11 @@ body {
   color: var(--accent-op16);
   background: rgba(0, 212, 255, 0.1);
   border: 1px solid rgba(0, 212, 255, 0.25);
+}
+.tag-op17 {
+  color: var(--accent-op17);
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.28);
 }
 .tag-estimated {
   color: var(--accent-estimated);
@@ -1170,6 +1186,8 @@ body {
 
 .cluster-op16 { background-color: rgba(0, 212, 255, 0.12); }
 .cluster-op16 div { background-color: var(--accent-op16); }
+.cluster-op17 { background-color: rgba(244, 63, 94, 0.12); }
+.cluster-op17 div { background-color: var(--accent-op17); }
 .cluster-unlisted { background-color: rgba(71, 85, 105, 0.14); }
 .cluster-unlisted div { background-color: #475569; }
 .cluster-estimated div {
@@ -1205,6 +1223,7 @@ body {
 .point-op14 { background-color: var(--accent-op14); box-shadow: 0 0 12px var(--accent-op14); }
 .point-op15 { background-color: var(--accent-op15); box-shadow: 0 0 12px var(--accent-op15); }
 .point-op16 { background-color: var(--accent-op16); box-shadow: 0 0 12px var(--accent-op16); }
+.point-op17 { background-color: var(--accent-op17); box-shadow: 0 0 12px var(--accent-op17); }
 .point-both { background-color: var(--accent-both); box-shadow: 0 0 12px var(--accent-both); }
 .point-unlisted { background-color: #475569; box-shadow: 0 0 12px rgba(71, 85, 105, 0.7); }
 .custom-point.estimated-strong::after {

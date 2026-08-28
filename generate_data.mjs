@@ -125,6 +125,18 @@ async function run() {
   let totalSkipped = 0;
   const outputPath = join(__dirname, 'data', 'stores.json');
   const cachedCoordinates = new Map();
+  const coordinateOverrides = new Map();
+
+  try {
+    const overrides = JSON.parse(readFileSync(join(__dirname, 'data', 'coordinate_overrides.json'), 'utf-8'));
+    Object.entries(overrides).forEach(([id, override]) => {
+      if (Number.isFinite(override.lat) && Number.isFinite(override.lng)) {
+        coordinateOverrides.set(id, override);
+      }
+    });
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
 
   if (process.env.REFRESH_COORDS !== '1') {
     try {
@@ -136,7 +148,12 @@ async function run() {
           const isFallback = Math.abs(store.lat - fallback.lat) < 1e-10
             && Math.abs(store.lng - fallback.lng) < 1e-10;
           if (isFallback) return;
-          cachedCoordinates.set(String(store.id), { lat: store.lat, lng: store.lng });
+          cachedCoordinates.set(String(store.id), {
+            lat: store.lat,
+            lng: store.lng,
+            city: store.city,
+            address: store.address,
+          });
         }
       });
     } catch {
@@ -144,7 +161,7 @@ async function run() {
     }
   }
 
-  function processCsv(filename, productTag) {
+  function processCsv(filename, productTag, { updateExistingDetails = false } = {}) {
     const csvPath = join(__dirname, 'data', filename);
     let csvContent;
     try {
@@ -192,6 +209,9 @@ async function run() {
           store.products.push(productTag);
           store.products.sort();
         }
+        if (updateExistingDetails) {
+          Object.assign(store, { name, city, address, phone });
+        }
       } else {
         storesMap.set(id, { id, name, city, address, phone, products: [productTag] });
       }
@@ -203,16 +223,27 @@ async function run() {
   processCsv('op14.csv', 'op14');
   processCsv('op15.csv', 'op15');
   processCsv('op16.csv', 'op16');
+  processCsv('op17.csv', 'op17', { updateExistingDetails: true });
   
   const stores = Array.from(storesMap.values());
+  let coordinateOverrideCount = 0;
   const storesToGeocode = stores.filter(store => {
+    const override = coordinateOverrides.get(store.id);
+    if (override && (!override.address || override.address === `${store.city}${store.address}`)) {
+      store.lat = override.lat;
+      store.lng = override.lng;
+      coordinateOverrideCount++;
+      return false;
+    }
     const cached = cachedCoordinates.get(store.id);
     if (!cached) return true;
+    if (cached.city !== store.city || cached.address !== store.address) return true;
     store.lat = cached.lat;
     store.lng = cached.lng;
     return false;
   });
   console.log(`\n✅ Total unique stores: ${stores.length}`);
+  console.log(`📌 Applied coordinate overrides: ${coordinateOverrideCount}`);
   console.log(`♻️  Reused coordinates: ${stores.length - storesToGeocode.length}`);
 
   // Fetch coordinates concurrently (Chunk size = 20)

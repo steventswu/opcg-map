@@ -10,7 +10,7 @@ const PUBLIC_SIGNAL_MAX_WEIGHT = 18;
 const PUBLIC_SIGNAL_STORE_BENCHMARK = 2500;
 const PUBLIC_SIGNAL_RECENCY_DAYS = 365;
 const PUBLIC_SIGNAL_MIN_RECENCY = 0.5;
-const OP_WEIGHTS = { op14: 15, op15: 30, op16: 50 };
+const OP_WEIGHTS = { op14: 15, op15: 30, op16: 50, op17: 75 };
 const SOURCE_URL = 'https://dose.run/7fami11';
 const REQUEST_HEADERS = {
   Referer: SOURCE_URL,
@@ -86,11 +86,15 @@ async function run() {
     const op14 = productsAtStore.has('op14') ? 1 : 0;
     const op15 = productsAtStore.has('op15') ? 1 : 0;
     const op16 = productsAtStore.has('op16') ? 1 : 0;
+    const op17 = productsAtStore.has('op17') ? 1 : 0;
     const publicFlags = publicSignals.map(signal => signal.ids.has(id) ? 1 : 0);
     const publicHits = publicFlags.reduce((sum, value) => sum + value, 0);
-    const opCount = op14 + op15 + op16;
+    const opCount = op14 + op15 + op16 + op17;
     const signalCount = opCount + publicHits;
-    const opScore = op14 * OP_WEIGHTS.op14 + op15 * OP_WEIGHTS.op15 + op16 * OP_WEIGHTS.op16;
+    const opScore = op14 * OP_WEIGHTS.op14
+      + op15 * OP_WEIGHTS.op15
+      + op16 * OP_WEIGHTS.op16
+      + op17 * OP_WEIGHTS.op17;
     const publicScore = publicFlags.reduce(
       (sum, flag, index) => sum + flag * publicSignals[index].weight,
       0
@@ -115,6 +119,7 @@ async function run() {
       op14,
       op15,
       op16,
+      op17,
       publicHits,
       signalCount,
       latestPublicSignal
@@ -123,6 +128,7 @@ async function run() {
 
   ranked.sort((a, b) =>
     b.score - a.score
+    || b.op17 - a.op17
     || b.op16 - a.op16
     || b.op15 - a.op15
     || b.op14 - a.op14
@@ -146,6 +152,7 @@ async function run() {
       op14: Boolean(store.op14),
       op15: Boolean(store.op15),
       op16: Boolean(store.op16),
+      op17: Boolean(store.op17),
       publicCardAllocations: store.publicHits,
       total: store.signalCount
     }
@@ -161,9 +168,9 @@ async function run() {
       generatedAt: generatedAt.toISOString(),
       sourceDataVersion: dataBase,
       sourceUrl: SOURCE_URL,
-      modelVersion: 1,
+      modelVersion: 2,
       type: 'estimated',
-      disclaimer: '依 OP-14～16 與近期公開卡牌配貨訊號推估，並非 7-ELEVEN 官方或實際 POS 業績排名。',
+      disclaimer: '依 OP-14～17 與近期公開卡牌配貨訊號推估，並非 7-ELEVEN 官方或實際 POS 業績排名。',
       storeCount: topStores.length,
       publicSignalCount: publicSignals.length
     },

@@ -20,6 +20,7 @@ const PRODUCT_META = {
   'OP-14': { filter: 'op14', tagClass: 'tag-op14' },
   'OP-15': { filter: 'op15', tagClass: 'tag-op15' },
   'OP-16': { filter: 'op16', tagClass: 'tag-op16' },
+  'OP-17': { filter: 'op17', tagClass: 'tag-op17' },
 };
 const ESTIMATED_FILTER = 'estimated';
 
@@ -29,7 +30,7 @@ const ESTIMATED_FILTER = 'estimated';
 const state = {
   stores: [],
   filteredStores: [],
-  activeFilter: 'all',    // 'all' | 'op14' | 'op15' | 'op16' | 'estimated' | 'near'
+  activeFilter: 'all',    // 'all' | 'op14' | 'op15' | 'op16' | 'op17' | 'estimated' | 'near'
   activeCity: 'all',
   selectedStore: null,
   searchQuery: '',
@@ -232,6 +233,7 @@ function normalizeProducts(p) {
     if (s.includes('OP14') || s === '14') return 'OP-14';
     if (s.includes('OP15') || s.includes('15')) return 'OP-15';
     if (s.includes('OP16') || s.includes('16')) return 'OP-16';
+    if (s.includes('OP17') || s.includes('17')) return 'OP-17';
     return String(x);
   }).filter(Boolean))];
 }
@@ -441,7 +443,7 @@ function showStorePanel(store) {
     dom.panelEstimatedMeta.textContent = confidenceLabels[store.estimatedConfidence] || '推估名單';
     dom.panelEstimatedNote.textContent = store.isOriginal
       ? '依公開配貨訊號推估，非 7-ELEVEN 官方或實際 POS 業績。'
-      : '依公開配貨訊號推估；此店未列入目前 OP-14～16 名單。';
+      : '依公開配貨訊號推估；此店未列入目前 OP-14～17 名單。';
     dom.panelEstimated.style.display = '';
   } else {
     dom.panelEstimated.style.display = 'none';
