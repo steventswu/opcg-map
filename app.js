@@ -23,6 +23,12 @@ const PRODUCT_META = {
   'OP-17': { filter: 'op17', tagClass: 'tag-op17' },
 };
 const ESTIMATED_FILTER = 'estimated';
+const TAIWAN_ADMIN_AREAS = [
+  '台北市', '新北市', '桃園市', '台中市', '台南市', '高雄市',
+  '基隆市', '新竹市', '嘉義市', '新竹縣', '苗栗縣', '彰化縣',
+  '南投縣', '雲林縣', '嘉義縣', '屏東縣', '宜蘭縣', '花蓮縣',
+  '台東縣', '澎湖縣', '金門縣', '連江縣'
+];
 
 // ---------------------------------------------------------------------------
 // State
@@ -142,6 +148,25 @@ function getProductVariant(products, prefix) {
   return `${prefix}-${PRODUCT_META[knownProducts[0]].filter}`;
 }
 
+function normalizeStoreIdentityPart(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/臺/g, '台')
+    .replace(/[\s,，.。．、-]/g, '')
+    .toLowerCase();
+}
+
+function getStoreIdentityKey(store) {
+  const city = normalizeStoreIdentityPart(store.city);
+  const address = normalizeStoreIdentityPart(store.address);
+  const addressHasAdminArea = TAIWAN_ADMIN_AREAS
+    .map(normalizeStoreIdentityPart)
+    .some(area => address.startsWith(area));
+  const location = addressHasAdminArea ? address : `${city}${address}`;
+  const phone = String(store.phone || '').replace(/\D/g, '');
+  return location && phone ? `${location}|${phone}` : '';
+}
+
 // ---------------------------------------------------------------------------
 // Data Loading
 // ---------------------------------------------------------------------------
@@ -149,7 +174,7 @@ async function loadStores() {
   try {
     const [storeResponse, estimatedResponse] = await Promise.all([
       fetch('/data/stores.json'),
-      fetch('/data/estimated_top2000.json'),
+      fetch('/data/estimated_top2500.json?v=3'),
     ]);
     if (!storeResponse.ok) throw new Error(`HTTP ${storeResponse.status}`);
     const data = await storeResponse.json();
@@ -162,11 +187,41 @@ async function loadStores() {
 
     const raw = Array.isArray(data) ? data : (data.stores || []);
     const estimatedRaw = Array.isArray(estimatedData) ? estimatedData : (estimatedData.stores || []);
-    const estimatedById = new Map(estimatedRaw.map(store => [String(store.id), store]));
+    const rawById = new Map(raw.map(store => [String(store.id), store]));
+    const rawByIdentity = new Map();
+    raw.forEach(store => {
+      const key = getStoreIdentityKey(store);
+      if (!key) return;
+      const matches = rawByIdentity.get(key) || [];
+      matches.push(store);
+      rawByIdentity.set(key, matches);
+    });
+
+    const estimatedMatchByRawId = new Map();
+    const matchedEstimatedIds = new Set();
+    const assignedRawIds = new Set();
+    estimatedRaw.forEach(estimated => {
+      const exactMatch = rawById.get(String(estimated.id));
+      const identityMatches = rawByIdentity.get(getStoreIdentityKey(estimated)) || [];
+      const candidates = (identityMatches.length > 0
+        ? identityMatches
+        : (exactMatch ? [exactMatch] : []))
+        .filter(store => !assignedRawIds.has(String(store.id)));
+      const match = [...candidates].sort((a, b) =>
+        rawStoreRecencyScore(b) - rawStoreRecencyScore(a)
+        || Number(String(b.id) === String(estimated.id)) - Number(String(a.id) === String(estimated.id))
+        || String(a.id).localeCompare(String(b.id))
+      )[0];
+      if (!match) return;
+      estimatedMatchByRawId.set(String(match.id), estimated);
+      matchedEstimatedIds.add(String(estimated.id));
+      assignedRawIds.add(String(match.id));
+    });
+
     const mergedById = new Map();
 
     raw.forEach(store => {
-      const estimated = estimatedById.get(String(store.id));
+      const estimated = estimatedMatchByRawId.get(String(store.id));
       mergedById.set(String(store.id), {
         ...store,
         isOriginal: true,
@@ -177,9 +232,12 @@ async function loadStores() {
     });
 
     estimatedRaw.forEach(store => {
-      if (mergedById.has(String(store.id))) return;
-      mergedById.set(String(store.id), {
+      if (matchedEstimatedIds.has(String(store.id))) return;
+      const hasConflictingRawId = mergedById.has(String(store.id));
+      const stateId = hasConflictingRawId ? `estimated:${store.id}` : store.id;
+      mergedById.set(String(stateId), {
         ...store,
+        id: stateId,
         products: [],
         isOriginal: false,
         estimatedRank: store.rank,
@@ -218,6 +276,15 @@ async function loadStores() {
     console.error('Failed to load stores:', err);
     return false;
   }
+}
+
+function rawStoreRecencyScore(store) {
+  const products = normalizeProducts(store.products || store.product || []);
+  if (products.includes('OP-17')) return 4;
+  if (products.includes('OP-16')) return 3;
+  if (products.includes('OP-15')) return 2;
+  if (products.includes('OP-14')) return 1;
+  return 0;
 }
 
 function extractCity(address) {
@@ -628,7 +695,7 @@ function applyFilters() {
     .find(([, meta]) => meta.filter === state.activeFilter)?.[0];
 
   if (state.activeFilter === ESTIMATED_FILTER) {
-    // The initial collection already contains only estimated TOP 2,000 stores.
+    // The initial collection already contains only estimated TOP 2,500 stores.
   } else if (activeProduct) {
     filtered = filtered.filter(s => s.products.includes(activeProduct));
   } else if (state.activeFilter === 'near' && state.userLocation) {
